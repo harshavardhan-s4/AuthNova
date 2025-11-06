@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AuthNova - {% block title %}{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <header>
+        <nav>
+            <div class="nav-left">
+                <a href="{{ url_for('home') }}" class="logo">
+                    <img src="{{ url_for('static', filename='images/logo.png') }}" alt="AuthNova" class="logo-image">
+                </a>
+            </div>
+
+            {% if session.get('user') %}
+            <div class="nav-center">
+                <div class="trust-score-container" role="region" aria-label="Trust Score">
+                    <div class="trust-score">Trust Score: --/100</div>
+                    <div class="security-tip">Analyzing security practices...</div>
+                </div>
+            </div>
+            {% endif %}
+
+            <div class="nav-right">
+                {% if session.get('user') %}
+                    <a href="{{ url_for('alerts') }}" class="nav-link">Alerts</a>
+                    <a href="{{ url_for('logout') }}" class="nav-link">Logout</a>
+                {% else %}
+                    <a href="{{ url_for('login') }}" class="nav-link">Login</a>
+                    <a href="{{ url_for('register') }}" class="nav-link">Register</a>
+                {% endif %}
+            </div>
+        </nav>
+    </header>
+
+    <!-- Flash Messages (single global area) -->
+    <div class="flash-messages" aria-live="polite">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="flash-message {{ category }} popup">
+                        {{ message }}
+                        <button class="close-btn" onclick="this.parentElement.style.display='none'">&times;</button>
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+    </div>
+
+    <!-- Main Content -->
+    <main class="container">
+        {% block content %}{% endblock %}
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="footer-content">
+            <div class="footer-section">
+                <h4>Contact</h4>
+                <p>Email: harshavardhan4102007@gmail.com, tanyashreesm@gmail.com</p>
+            </div>
+            <div class="footer-section">
+                <h4>Follow Us</h4>
+                <div class="social-links">
+                    <a href="https://www.linkedin.com/in/harshavardhan-s-331641361/" target="_blank">LinkedIn BackEnd Developer</a>
+                    <a href="http://www.linkedin.com/in/tanya-shree-s-7474a336b" target="_blank">LinkedIn FrontEnd Developer</a>
+                </div>
+            </div>
+            <div class="footer-section">
+                <h4>Address</h4>
+                <p>Chennai Institute Of Technology</p>
+                <p>Chennai, Tamil Nadu, India</p>
+            </div>
+        </div>
+        <div class="footer-bottom">
+            <p>&copy; 2025 AuthNova.</p>
+        </div>
+    </footer>
+
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+    {% block scripts %}{% endblock %}
+
+    <script>
+document.addEventListener('DOMContentLoaded', function() {
+    const flashMessages = document.querySelectorAll('.flash-message');
+    
+    flashMessages.forEach(message => {
+        // Fade out after 3 seconds
+        setTimeout(() => {
+            message.classList.add('fade-out');
+            // Remove from DOM after fade animation
+            setTimeout(() => {
+                message.remove();
+            }, 300);
+        }, 3000);
+    });
+});
+</script>
+</body>
+</html>

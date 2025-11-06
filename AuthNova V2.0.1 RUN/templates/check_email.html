@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Check Email{% endblock %}
+
+{% block content %}
+<div class="form-container">
+  <h2>Check Email</h2>
+  <form method="post" action="{{ url_for('check_email') }}">
+    <div class="form-group">
+      <label for="email">Email to check</label>
+      <input type="email" id="email" name="email" value="{{ email or '' }}" required>
+    </div>
+    <button type="submit" class="btn">Check Email</button>
+  </form>
+
+  {% if has_result %}
+    {% if error %}
+      <div class="breach-box">
+        <strong>Unable to check</strong>
+        <div class="meta">{{ error }}</div>
+      </div>
+    {% else %}
+      {% if breaches and breaches|length > 0 %}
+      <div class="breach-box" role="alert" aria-live="polite">
+        <strong>Email breached</strong>
+        <div class="meta">
+          Found in the following places:
+          <ul>
+            {% for b in breaches %}
+              <li>{{ b }}</li>
+            {% endfor %}
+          </ul>
+        </div>
+      </div>
+      {% else %}
+      <div class="safe-box" role="status" aria-live="polite">
+        <strong>No breaches found</strong>
+        <div class="meta">This email was not found in known breach sources.</div>
+      </div>
+      {% endif %}
+    {% endif %}
+  {% endif %}
+</div>
+{% endblock %}

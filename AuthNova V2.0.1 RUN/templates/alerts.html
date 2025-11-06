@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="container">
+  <h2>Security Alerts</h2>
+
+  <div class="alerts-list">
+    {% if breaches %}
+      {% for b in breaches %}
+      <div class="breach-box" role="alert" aria-live="polite">
+        <strong>{{ b.label or "Entry" }}</strong>
+        <div class="meta">
+          {% if b.email %}
+            Email: {{ b.email }} — breaches: {{ b.email_breaches or 0 }}<br>
+          {% endif %}
+          {% if b.password_breached %}
+            Password: Previously exposed (count: {{ b.password_count or 'unknown' }})<br>
+          {% else %}
+            Password: No known exposure detected<br>
+          {% endif %}
+          Detected: {{ b.timestamp }}
+        </div>
+      </div>
+      {% endfor %}
+    {% else %}
+      <div class="safe-box" role="status" aria-live="polite">
+        <strong>No breaches found</strong>
+        <div class="meta">Your vault looks safe right now. Keep enabling good habits — e.g., enable MFA and use unique passwords.</div>
+      </div>
+    {% endif %}
+  </div>
+</section>
+{% endblock %}

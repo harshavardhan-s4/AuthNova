@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="vault-challenge-container">
+    <h2><i class="fas fa-shield-alt"></i> HackMIUC </h2>
+    <p class="subtitle">Test your password strength and earn Auth Points</p>
+    
+    <div class="challenge-status {% if result %}status-{{result.strength|lower}}{% endif %}">
+        <div class="status-item">
+            <span class="label">Auth Points</span>
+            <span class="value">{{ result.auth_points if result else 0 }}</span>
+        </div>
+        <div class="status-item">
+            <span class="label">Strength</span>
+            <span class="value">{{ result.strength if result else 'Not Tested' }}</span>
+        </div>
+        <div class="status-item">
+            <span class="label">Time to Crack</span>
+            <span class="value">{{ result.crack_time if result else '?' }}</span>
+        </div>
+    </div>
+
+    <form id="password-form" method="POST" class="challenge-form">
+        <div class="input-group">
+            <label for="challenge-password">Enter a password to test:</label>
+            <input type="password" 
+                   name="password" 
+                   id="challenge-password"
+                   placeholder="Make it strong!" 
+                   required
+                   autocomplete="new-password">
+            <button type="submit">
+                <i class="fas fa-bolt"></i> Test Strength
+            </button>
+        </div>
+    </form>
+
+    {% if result %}
+    <div class="challenge-results">
+        <div class="result-details">
+            <p class="feedback">
+                <i class="fas fa-info-circle"></i> {{ result.feedback }}
+            </p>
+            {% if result.breached %}
+            <p class="breach-warning">
+                <i class="fas fa-exclamation-triangle"></i> 
+                This password appears in {{ result.breach_count }} known breaches
+            </p>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

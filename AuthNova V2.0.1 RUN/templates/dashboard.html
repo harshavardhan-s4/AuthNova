@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="dashboard-container">
+  <div class="dashboard-header">
+    <h2>
+      Welcome back, {{ session.get('user', 'Guest') }}
+    </h2>
+  </div>
+
+  <div class="game-bar">
+    <form action="{{ url_for('vault_challenge_route') }}" method="GET" style="width: 100%;">
+        <button type="submit" class="game-status-button" style="width: 100%; border: none; background: none; cursor: pointer; padding: 0;">
+            <div class="game-status">
+                <div class="game-logo">
+                    <img src="{{ url_for('static', filename='images/game-logo.png') }}" alt="HackMIUC Logo">
+                </div>
+                <div class="game-content">
+                    <h3 class="game-title">HackMIUC</h3>
+                    <p class="game-description">Challenge yourself with our interactive security game. Learn about password strength, vault security, and earn authentication points while protecting your digital assets.</p>
+                </div>
+            </div>
+        </button>
+    </form>
+  </div>
+
+  <!-- Wrap the grid so it is centered and constrained -->
+  <div class="feature-grid-wrapper">
+    <section class="feature-grid">
+      <!-- 1) Vault (first) - entire card clickable -->
+      <a class="feature-card" href="{{ url_for('vault') }}">
+        <div class="feature-logo">
+          <img src="{{ url_for('static', filename='images/icon-vault.png') }}" alt="Vault">
+        </div>
+        <div class="feature-body">
+          <h3 class="feature-title">Vault</h3>
+          <p class="feature-desc">
+            Securely store and organize credentials, notes, and recovery keys. Encrypted locally in your vault file so you keep control.
+          </p>
+          <p class="feature-detail">Quick actions: add, edit, or remove entries; copy username/password to clipboard with one click.</p>
+        </div>
+      </a>
+
+      <!-- 2) Email breach detection (second) - entire card clickable -->
+      <a class="feature-card" href="{{ url_for('check_email') }}">
+        <div class="feature-logo">
+          <img src="{{ url_for('static', filename='images/icon-email.png') }}" alt="Email Breach Detection">
+        </div>
+        <div class="feature-body">
+          <h3 class="feature-title">Email Breach Detection</h3>
+          <p class="feature-desc">
+            Scan an email address against known breach sources to learn where it may have been exposed.
+          </p>
+          <p class="feature-detail">Output lists the breached services so you can take targeted action (reset passwords, enable MFA).</p>
+        </div>
+      </a>
+
+      <!-- 3) Password breach detection (third) - entire card clickable -->
+      <a class="feature-card" href="{{ url_for('check_password') }}">
+        <div class="feature-logo">
+          <img src="{{ url_for('static', filename='images/icon-password.png') }}" alt="Password Breach Detection">
+        </div>
+        <div class="feature-body">
+          <h3 class="feature-title">Password Breach Detection</h3>
+          <p class="feature-desc">
+            Verify whether a password appears in public breach data and see how many times it was exposed.
+          </p>
+          <p class="feature-detail">Use results to decide if a password should be replaced or strengthened; try longer, unique phrases.</p>
+        </div>
+      </a>
+
+
+    </section>
+  </div>
+</div>
+{% endblock %}
