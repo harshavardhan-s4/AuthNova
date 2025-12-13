@@ -1,5 +1,8 @@
 import hashlib
 import requests
+import logging
+
+logger = logging.getLogger(__name__)
 
 def check_password_breach(password: str):
     """
@@ -16,7 +19,7 @@ def check_password_breach(password: str):
         url = f"https://api.pwnedpasswords.com/range/{prefix}"
         resp = requests.get(url, timeout=10, headers={"User-Agent": "AuthNova"})
         if resp.status_code != 200:
-            print("Pwned API status:", resp.status_code)
+            logger.warning('Pwned API status: %s', resp.status_code)
             return None
         for line in resp.text.splitlines():
             if ':' not in line:
@@ -29,8 +32,8 @@ def check_password_breach(password: str):
                     return None
         return 0
     except requests.RequestException as e:
-        print("Password check request error:", e)
+        logger.exception('Password check request error: %s', e)
         return None
     except Exception as e:
-        print("Password check unexpected error:", e)
+        logger.exception('Password check unexpected error: %s', e)
         return None

@@ -4,6 +4,9 @@ import math
 import re
 from datetime import datetime
 from typing import Dict, Any, Tuple
+import logging
+
+logger = logging.getLogger(__name__)
 
 class PasswordStrengthCalculator:
     def __init__(self):
@@ -55,7 +58,7 @@ class VaultChallenge:
                         return int(count)
             return 0
         except Exception as e:
-            print(f"HIBP API error: {e}")
+            logger.exception("HIBP API error: %s", e)
             return 0
             
     def _calculate_crack_time(self, entropy: float) -> Tuple[str, float]:

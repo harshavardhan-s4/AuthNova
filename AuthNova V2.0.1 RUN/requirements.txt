@@ -2,3 +2,8 @@ flask
 firebase-admin
 gunicorn
 python-dotenv
+cryptography
+argon2-cffi
+Flask-WTF
+Flask-Limiter
+requests
