@@ -36,8 +36,13 @@ app.permanent_session_lifetime = timedelta(days=1)
 # CSRF protection
 csrf = CSRFProtect(app)
 
-# Rate limiter
-limiter = Limiter(app, key_func=get_remote_address, default_limits=["200 per hour"])
+# Rate limiter (Flask-Limiter v3+)
+limiter = Limiter(
+    key_func=get_remote_address,
+    default_limits=["200 per hour"]
+)
+# Initialize limiter with the Flask app
+limiter.init_app(app)
 
 # Configure logging
 handler = logging.StreamHandler()
