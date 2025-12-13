@@ -1,11 +1,17 @@
 import os
 import json
 from datetime import datetime
+import logging
 
-NOTIFICATIONS_FILE = 'data/notifications.json'
+logger = logging.getLogger(__name__)
+
+# Use absolute paths based on module location
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DATA_DIR = os.path.join(BASE_DIR, 'data')
+NOTIFICATIONS_FILE = os.path.join(DATA_DIR, 'notifications.json')
 
 def ensure_notifications_file():
-    os.makedirs('data', exist_ok=True)
+    os.makedirs(os.path.dirname(NOTIFICATIONS_FILE), exist_ok=True)
     if not os.path.exists(NOTIFICATIONS_FILE):
         with open(NOTIFICATIONS_FILE, 'w', encoding='utf-8') as f:
             json.dump({}, f)
@@ -17,7 +23,7 @@ def get_user_notifications(username):
             notifications = json.load(f) or {}
         return notifications.get(username, [])
     except Exception as e:
-        print(f"Error getting notifications: {e}")
+        logger.exception('Error getting notifications: %s', e)
         return []
 
 def add_notification(username, message, type="info"):
@@ -39,7 +45,7 @@ def add_notification(username, message, type="info"):
         with open(NOTIFICATIONS_FILE, 'w', encoding='utf-8') as f:
             json.dump(notifications, f, indent=2)
     except Exception as e:
-        print(f"Error adding notification: {e}")
+        logger.exception('Error adding notification: %s', e)
 
 def mark_as_read(username, timestamp):
     ensure_notifications_file()
@@ -55,4 +61,4 @@ def mark_as_read(username, timestamp):
             with open(NOTIFICATIONS_FILE, 'w', encoding='utf-8') as f:
                 json.dump(notifications, f, indent=2)
     except Exception as e:
-        print(f"Error marking notification as read: {e}")
+        logger.exception('Error marking notification as read: %s', e)

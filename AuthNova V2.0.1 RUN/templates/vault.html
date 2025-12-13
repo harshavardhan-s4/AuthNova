@@ -11,7 +11,8 @@
         {% endif %}
     {% endwith %}
 
-    <form id="vault-form" class="vault-form">
+    <form id="vault-form" class="vault-form" method="post" action="{{ url_for('add_entry') }}">
+        <input type="hidden" name="csrf_token" id="csrf_token" value="{{ csrf_token() }}">
         <div class="form-group">
             <input type="text" id="label" name="label" placeholder="Label (e.g., Gmail)" required />
         </div>

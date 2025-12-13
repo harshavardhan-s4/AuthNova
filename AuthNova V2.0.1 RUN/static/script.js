@@ -27,6 +27,13 @@
     initNotificationToggle();
   }
 
+  // CSRF helper (reads hidden input or global var)
+  function getCsrfToken() {
+    const el = document.getElementById('csrf_token') || document.querySelector('meta[name="csrf-token"]');
+    if (!el) return null;
+    return el.value || el.getAttribute('content');
+  }
+
   // --------- Auth forms ----------
   function initAuthForms() {
     const loginForm = document.getElementById('login-form');
@@ -38,9 +45,12 @@
           const passwordEl = document.getElementById('password');
           if (!usernameEl || !passwordEl) return console.warn('Login inputs missing');
           const payload = { username: usernameEl.value.trim(), password: passwordEl.value };
+          const headers = { 'Content-Type': 'application/json' };
+          const csrf = getCsrfToken();
+          if (csrf) headers['X-CSRFToken'] = csrf;
           const res = await fetch('/login', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers,
             body: JSON.stringify(payload)
           });
           const data = await safeJson(res);
@@ -61,14 +71,20 @@
           const u = document.getElementById('reg-username');
           const p = document.getElementById('reg-password');
           if (!u || !p) return console.warn('Register inputs missing');
+          const headers = { 'Content-Type': 'application/json' };
+          const csrf = getCsrfToken();
+          if (csrf) headers['X-CSRFToken'] = csrf;
           const res = await fetch('/register', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers,
             body: JSON.stringify({ username: u.value.trim(), password: p.value })
           });
           const data = await safeJson(res);
           if (data && data.success) window.location.href = '/dashboard';
-          else showFlash('Registration failed', 'error');
+          else {
+            const msg = data && (data.error || (data.raw && data.raw.message)) || 'Registration failed';
+            showFlash(msg, 'error');
+          }
         } catch (err) {
           console.error('Register error:', err);
           showFlash('Registration error', 'error');
@@ -93,9 +109,12 @@
           showFlash('Label, username and password are required', 'error');
           return;
         }
+        const headers = { 'Content-Type': 'application/json' };
+        const csrf = getCsrfToken();
+        if (csrf) headers['X-CSRFToken'] = csrf;
         const res = await fetch('/add_entry', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers,
           body: JSON.stringify({ label, username, password, email })
         });
         const data = await safeJson(res);
@@ -171,7 +190,10 @@
   // --- vault breach poller (call /api/check-vault) ---
   async function checkVaultBreachesAndRender() {
     try {
-      const res = await fetch('/api/check-vault', { credentials: 'same-origin' });
+      const headers = { 'Accept': 'application/json' };
+      const csrf = getCsrfToken();
+      if (csrf) headers['X-CSRFToken'] = csrf;
+      const res = await fetch('/api/check-vault', { credentials: 'same-origin', headers });
       if (!res.ok) {
         console.warn('check-vault returned', res.status);
         return;
@@ -271,9 +293,12 @@
     if (!confirm('Delete entry "' + label + '"?')) return;
 
     try {
+      const headers = { 'Content-Type': 'application/json' };
+      const csrf = getCsrfToken();
+      if (csrf) headers['X-CSRFToken'] = csrf;
       const res = await fetch('/delete_entry', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ label })
       });
       const data = await res.json();
@@ -339,7 +364,10 @@
 
     async function fetchTrustScore() {
         try {
-            const res = await fetch('/api/trust-score', { credentials: 'same-origin' });
+            const headers = { 'Accept': 'application/json' };
+            const csrf = getCsrfToken();
+            if (csrf) headers['X-CSRFToken'] = csrf;
+            const res = await fetch('/api/trust-score', { credentials: 'same-origin', headers });
             if (!res.ok) return null;
             const j = await res.json();
             return (typeof j.score === 'number') ? j.score : null;
@@ -400,12 +428,15 @@ document.addEventListener('DOMContentLoaded', function() {
         
         const password = document.getElementById('challenge-password').value;
         
+        const headers = {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'X-Requested-With': 'XMLHttpRequest'
+        };
+        const csrf = getCsrfToken();
+        if (csrf) headers['X-CSRFToken'] = csrf;
         fetch('/vault-challenge', {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-                'X-Requested-With': 'XMLHttpRequest'
-            },
+          headers,
             body: `password=${encodeURIComponent(password)}`
         })
         .then(response => response.json())

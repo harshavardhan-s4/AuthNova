@@ -1,7 +1,13 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from functools import wraps
 from flask import Flask, render_template, request, redirect, session, jsonify, flash, url_for
-from auth import register_user, validate_login
+import secrets
+import logging
+from flask_wtf import CSRFProtect
+from dotenv import load_dotenv
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+from auth import register_user, validate_login, sanitize_username
 from breach_check.email import check_email_breach
 from breach_check.password import check_password_breach
 # notifications integration removed (reverted)
@@ -9,17 +15,48 @@ from vault import get_vault, add_entry, delete_entry
 from vault_monitor import check_vault_entries
 from vault_challenge import VaultChallenge
 import os
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DATA_DIR = os.path.join(BASE_DIR, 'data')
+os.makedirs(DATA_DIR, exist_ok=True)
 
-app = Flask(__name__)
-app.secret_key = 'your_secret_key_here'
+# Use environment-provided secrets; generate a fallback but warn
+app = Flask(__name__, template_folder="templates", static_folder="static")
+load_dotenv()
+# Use environment-provided secrets; generate a fallback but warn
+app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'dev-secret')
+app.config.update(
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SECURE=False,  # Set True on production HTTPS
+    SESSION_COOKIE_SAMESITE='Lax'
+)
+if os.environ.get('FLASK_ENV') == 'production':
+    app.config['SESSION_COOKIE_SECURE'] = True
+app.permanent_session_lifetime = timedelta(days=1)
+
+# CSRF protection
+csrf = CSRFProtect(app)
+
+# Rate limiter
+limiter = Limiter(app, key_func=get_remote_address, default_limits=["200 per hour"])
+
+# Configure logging
+handler = logging.StreamHandler()
+handler.setLevel(logging.INFO)
+app.logger.addHandler(handler)
+app.logger.setLevel(logging.INFO)
 
 # Ensure data directories exist
-os.makedirs('data/vaults', exist_ok=True)
-if not os.path.exists('data/users.json'):
-    with open('data/users.json', 'w') as f:
+os.makedirs(os.path.join(DATA_DIR, 'vaults'), exist_ok=True)
+USERS_FILE = os.path.join(DATA_DIR, 'users.json')
+if not os.path.exists(USERS_FILE):
+    with open(USERS_FILE, 'w', encoding='utf-8') as f:
         f.write('{}')
 
 vault_challenge = VaultChallenge()
+
+# Check for vault master key usage and warn if missing
+if not os.environ.get('VAULT_MASTER_KEY'):
+    app.logger.warning('VAULT_MASTER_KEY not set: vault files will be stored in plaintext unless you configure it.')
 
 def login_required(f):
     @wraps(f)
@@ -44,10 +81,22 @@ def alerts():
         breaches = check_vault_entries(session['user'])
         return render_template('alerts.html', breaches=breaches)
     except Exception as e:
-        print(f"Error rendering alerts: {e}")
+        app.logger.error("Error rendering alerts: %s", e)
         # show empty list so template can render the "safe" box
         flash("Could not load alerts right now.", "error")
         return render_template('alerts.html', breaches=[])
+
+
+@app.route('/api/check-vault')
+@login_required
+@limiter.limit('30 per hour')
+def api_check_vault():
+    try:
+        breaches = check_vault_entries(session.get('user'))
+        return jsonify({'count': len(breaches), 'breaches': breaches})
+    except Exception as e:
+        app.logger.error('Error in api_check_vault: %s', e)
+        return jsonify({'count': 0, 'breaches': []}), 500
 
 # Add this helper function
 def url_for_safe(*args, **kwargs):
@@ -75,6 +124,7 @@ def dashboard():
     return render_template('dashboard.html')
 
 @app.route('/login', methods=['GET', 'POST'])
+@limiter.limit('10 per minute')
 def login():
     if 'user' in session:
         return redirect(url_for_safe('dashboard'))
@@ -82,8 +132,14 @@ def login():
     if request.method == 'POST':
         try:
             # Get form data (we'll handle JSON separately if needed)
-            username = request.form.get('username')
-            password = request.form.get('password')
+            if request.is_json:
+                data = request.get_json()
+                username = data.get('username')
+                password = data.get('password')
+            else:
+                username = request.form.get('username')
+                password = request.form.get('password')
+            username = sanitize_username(username or '')
             
             if not username or not password:
                 flash("Please provide both username and password", "error")
@@ -93,27 +149,39 @@ def login():
                 session['user'] = username
                 session['last_login'] = datetime.now().isoformat()
                 flash("Login successful!", "success")
+                if request.is_json:
+                    return jsonify(success=True)
                 return redirect(url_for('dashboard'))  # Redirect on success
             else:
                 flash("Invalid username or password", "error")
+                if request.is_json:
+                    return jsonify(success=False, error='Invalid username or password'), 401
                 return render_template('login.html')  # Return to form with error
                 
         except Exception as e:
-            print(f"Login error: {e}")
+            app.logger.exception("Login error: %s", e)
             flash("An error occurred during login", "error")
+            if request.is_json:
+                return jsonify(success=False, error='Login error'), 500
             return render_template('login.html')
             
     return render_template('login.html')
 
 @app.route('/register', methods=['GET', 'POST'])
+@limiter.limit('5 per minute')
 def register():
     if 'user' in session:
         return redirect(url_for_safe('dashboard'))
         
     if request.method == 'POST':
         try:
-            username = request.form.get('username', '').strip()
-            password = request.form.get('password', '').strip()
+            if request.is_json:
+                data = request.get_json() or {}
+                username = sanitize_username((data.get('username') or '').strip())
+                password = (data.get('password') or '').strip()
+            else:
+                username = sanitize_username(request.form.get('username', '').strip())
+                password = request.form.get('password', '').strip()
             
             # Validate input
             if not username or not password:
@@ -123,25 +191,56 @@ def register():
             if len(password) < 8:
                 flash("Password must be at least 8 characters long", "error")
                 return render_template('register.html')
+
+            # Enforce password strength at registration using vault_challenge
+            try:
+                pw_result = vault_challenge.evaluate_password(password)
+            except Exception as e:
+                app.logger.exception("Password strength evaluation failed: %s", e)
+                pw_result = None
+
+            if pw_result:
+                # Reject breached passwords entirely
+                if pw_result.get('breach_count', 0) and pw_result['breach_count'] > 0:
+                    err = "This password appears in known breaches. Choose a different one."
+                    flash(err, "error")
+                    if request.is_json:
+                        return jsonify(success=False, error=err), 400
+                    return render_template('register.html')
+
+                # Require a minimum auth_points threshold for a new password
+                min_points = 50
+                if pw_result.get('auth_points', 0) < min_points:
+                    err = f"Password too weak (auth points {pw_result.get('auth_points')}). {pw_result.get('feedback', '')}"
+                    flash(err, "error")
+                    if request.is_json:
+                        return jsonify(success=False, error=err), 400
+                    return render_template('register.html')
             
             if len(username) < 3:
                 flash("Username must be at least 3 characters long", "error")
                 return render_template('register.html')
             
             # Try to register
-            print(f"Attempting to register user: {username}")  # Debug print
+            app.logger.info(f"Attempting to register user: {username}")
             success = register_user(username, password)
             
             if success:
                 flash("Registration successful! Please login.", "success")
+                if request.is_json:
+                    return jsonify(success=True)
                 return redirect(url_for('login'))
             else:
                 flash("Username already exists or registration failed", "error")
+                if request.is_json:
+                    return jsonify(success=False, error='Username already exists or registration failed'), 400
                 return render_template('register.html')
                 
         except Exception as e:
-            print(f"Registration error: {e}")  # Debug print
+            app.logger.exception("Registration error: %s", e)
             flash("An error occurred during registration", "error")
+            if request.is_json:
+                return jsonify(success=False, error='Registration error'), 500
             return render_template('register.html')
     
     return render_template('register.html')
@@ -161,15 +260,16 @@ def vault():
         entries = get_vault(session['user']) or []  # Ensure entries is at least an empty list
         return render_template('vault.html', entries=entries)
     except Exception as e:
-        print(f"Error getting vault entries: {e}")
+        app.logger.exception("Error getting vault entries: %s", e)
         flash("Error loading vault entries", "error")
         return render_template('vault.html', entries=[])
 
 @app.route('/add_entry', methods=['POST'])
 @login_required
+@limiter.limit('60 per hour')
 def add_entry_route():
     # Handle both JSON and form data
-    data = request.get_json() or request.form.to_dict()
+    data = request.get_json(silent=True) or request.form.to_dict()
     label = data.get('label')
     username = data.get('username')
     password = data.get('password')
@@ -198,7 +298,7 @@ def add_entry_route():
         return redirect(url_for('vault'))
 
     except Exception as e:
-        print(f"Error adding entry: {e}")
+        app.logger.exception("Error adding entry: %s", e)
         if request.is_json:
             return jsonify(success=False, error="Failed to add entry"), 500
         flash("Failed to add entry", "error")
@@ -206,8 +306,9 @@ def add_entry_route():
 
 @app.route('/delete_entry', methods=['POST'])
 @login_required
+@limiter.limit('60 per hour')
 def delete_entry_route():
-    data = request.get_json() or request.form.to_dict()
+    data = request.get_json(silent=True) or request.form.to_dict()
     label = data.get('label')
     if not label:
         return jsonify(success=False, error="Missing label"), 400
@@ -216,20 +317,20 @@ def delete_entry_route():
         # removed flash() here to avoid duplicate notification in the navigation bar
         return jsonify(success=True)
     except Exception as e:
-        print(f"Error deleting entry: {e}")
+        app.logger.exception("Error deleting entry: %s", e)
         return jsonify(success=False, error="Failed to delete"), 500
 
 @app.route('/check_email', methods=['GET', 'POST'])
 @login_required
 def check_email():
     if request.method == 'POST':
-        email = request.form.get('email', '').strip()
+        email = (request.form.get('email') or '').strip()
         if not email:
             return render_template('check_email.html', error="Please provide an email address")
 
         try:
             result = check_email_breach(email)
-            print(f"Email check result: {result}")  # Debug print
+            app.logger.debug("Email check result: %s", result)
 
             # Normalize results into a list of human-friendly "places"
             breaches = []
@@ -266,7 +367,7 @@ def check_email():
             )
 
         except Exception as e:
-            print(f"Error checking email:", str(e))
+            app.logger.exception("Error checking email: %s", e)
             return render_template('check_email.html',
                                    email=email,
                                    error="Error checking email",
@@ -283,12 +384,12 @@ def check_password():
 
         try:
             count = check_password_breach(password)
-            print(f"Password check count: {count}")  # Debug print
+            app.logger.debug("Password check count: %s", count)
 
             # Render template with result rather than using flashes
             return render_template('check_password.html', count=count, has_result=True)
         except Exception as e:
-            print(f"Error checking password: {e}")
+            app.logger.exception("Error checking password: %s", e)
             return render_template('check_password.html', error="Error checking password", has_result=True)
 
     return render_template('check_password.html')
@@ -364,26 +465,41 @@ def get_trust_score():
 
         return jsonify({'score': score})
     except Exception as exc:
-        print("Error calculating trust score:", exc)
+        app.logger.exception("Error calculating trust score: %s", exc)
         return jsonify({'score': 60}), 500
 
-@app.route('/debug')
-def debug():
-    return jsonify({
-        'status': 'running',
-        'time': datetime.now().isoformat(),
-        'user': session.get('user'),
-        'session': dict(session)
-    })
+if os.environ.get('FLASK_ENV') != 'production':
+    @app.route('/debug')
+    def debug():
+        return jsonify({
+            'status': 'running',
+            'time': datetime.now().isoformat(),
+            'user': session.get('user'),
+            'session': dict(session)
+        })
 
 @app.route('/ping')
 def ping():
-    return 'pong'
+    return 'OK', 200
+
+
+@app.after_request
+def set_security_headers(response):
+    response.headers['X-Frame-Options'] = 'DENY'
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['Referrer-Policy'] = 'no-referrer-when-downgrade'
+    response.headers['Permissions-Policy'] = 'geolocation=()'
+    # Minimal CSP; adapt for assets if needed
+    response.headers['Content-Security-Policy'] = "default-src 'self'; img-src 'self' data:; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'"
+    return response
 
 @app.route('/vault-challenge', methods=['GET', 'POST'])
 def vault_challenge_route():
     if request.method == 'POST':
-        password = request.form.get('password')
+        if request.is_json:
+            password = request.get_json().get('password')
+        else:
+            password = request.form.get('password')
         if not password:
             return jsonify({'error': 'No password provided'}), 400
             
@@ -396,9 +512,8 @@ def vault_challenge_route():
 
 # At the bottom of the file
 if __name__ == "__main__":
-    print("Starting AuthNova server...")
+    app.logger.info("Starting AuthNova server (development mode)...")
     try:
-        app.debug = True
-        app.run(host="127.0.0.1", port=5000)
+        app.run(host="127.0.0.1", port=int(os.environ.get('PORT', 5000)))
     except Exception as e:
-        print(f"Error starting server: {e}")
+        app.logger.exception("Error starting server: %s", e)

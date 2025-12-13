@@ -21,6 +21,7 @@
     </div>
 
     <form id="password-form" method="POST" class="challenge-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <div class="input-group">
             <label for="challenge-password">Enter a password to test:</label>
             <input type="password" 

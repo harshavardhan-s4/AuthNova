@@ -1,5 +1,8 @@
 import requests
 from urllib.parse import quote
+import logging
+
+logger = logging.getLogger(__name__)
 
 def check_email_breach(email: str):
     """
@@ -26,8 +29,8 @@ def check_email_breach(email: str):
         # unexpected
         return None
     except requests.RequestException as e:
-        print("Email breach request error:", e)
+        logger.exception('Email breach request error: %s', e)
         return None
     except Exception as e:
-        print("Email breach unexpected error:", e)
+        logger.exception('Email breach unexpected error: %s', e)
         return None
